@@ -51,7 +51,7 @@ nys_memb <- nys_acad %>%
            school_name == "HELLENIC CLASSICAL CHARTER SCHOOL"|
            school_name == "INTERNATIONAL CHARTER SCHOOL OF NEW YORK (THE)"|
            school_name == "NEW YORK FRENCH-AMERICAN CHARTER SCHOOL"|
-           school_name == "	BROOKLYN URBAN GARDEN CHARTER SCHOOL"|
+           school_name == "BROOKLYN URBAN GARDEN CHARTER SCHOOL"|
            str_detect(school_name, "SUCCESS ACADEMY CHARTER SCHOOL",) == TRUE|
            school_name == "ELMWOOD VILLAGE CHARTER SCHOOL"|
            school_name == "ELMWOOD VILLAGE CHARTER - HERTEL"|
