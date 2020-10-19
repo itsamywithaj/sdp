@@ -1,17 +1,10 @@
 rm(list = ls())
-install.packages("knitr","dplyr","tidyr","lubridate")
-library(knitr)
-library(dplyr)
-library(tidyr)
-library(lubridate)
-
-install.packages("tidyverse")
+install.packages("tidyverse") # install tidyverse
 library(tidyverse)
-library(ggplot2)
 install.packages("readxl") # CRAN version
 library(readxl)
-install.packages("stringr")
-library(stringr)
+install.packages("data.table")
+library(data.table)
 getwd()
 setwd("/Users/amyjiravisitcul/Downloads/States/")
 #----------------- NYSED tests ------
@@ -30,31 +23,25 @@ levels(nys$school_name)[968:969] <- c("ELMWOOD VILLAGE CHARTER SCHOOL","ELMWOOD 
 # change to match the BOCES naming convention for EVCS
 
 nys_acad <- nys %>% 
+  separate(item_desc, c("drop","grade","subject"),sep=" ") %>% 
   filter(subgroup_name == "All Students", # aggregated student performance
          is.na(county_code)==FALSE, # within a county
          str_detect(school_name,"DISTRICT")==FALSE, # remove whole-county rows
          str_detect(school_name,"COUNTY")==FALSE) %>% # remove whole-district rows
   mutate(n_tested = as.numeric(as.character(total_tested)),
-         subject = as.factor(item_subject_area),
-         item_desc = as.factor(item_desc), # Grade + subject variable
          mean_scale_score = as.numeric(as.character(mean_scale_score))) %>% 
-  select(bedscode, school_name, subject, item_desc, n_tested,mean_scale_score) %>% na.omit()
-levels(nys_acad$subject) <- c("ela","math")
+  select(school_name, subject, grade, n_tested,mean_scale_score) %>% na.omit()
 names(nys_acad)
 
 nys_means <- nys %>% # NYS's mean scores for all grades in math and ELA
+  separate(item_desc, c("drop","grade","subject"),sep=" ") %>% 
   filter(subgroup_name == "All Students",
          school_name == "STATEWIDE - ALL DISTRICTS AND CHARTERS") %>% 
-  select(bedscode,school_name,item_subject_area,item_desc,total_tested,mean_scale_score)
-names(nys_means)[c(3,5)] <- c("subject","n_tested")
+  select(bedscode,school_name,subject, grade,total_tested,mean_scale_score)
+names(nys_means)[5] <- "n_tested"
 str(nys_acad)
-nys_wmeans <- nys_acad %>% # weighted means by number of test takers
-  group_by(school_name,item_desc) %>% 
-  summarize(weighted.mean(mean_scale_score,n_tested),
-            n_tested = n_tested)
-names(nys_wmeans)[3] <- "wmeans"
 
-nys_memb <- nys_wmeans %>% 
+nys_memb <- nys_acad %>% 
   filter(school_name == "ACADEMY OF THE CITY CHARTER SCHOOL"|
            str_detect(school_name,"BROOKLYN PROSPECT CHARTER SCHOOL")==TRUE|
            school_name == "CENTRAL QUEENS ACADEMY CHARTER SCHOOL"|
@@ -69,47 +56,36 @@ nys_memb <- nys_wmeans %>%
            school_name == "ELMWOOD VILLAGE CHARTER SCHOOL"|
            school_name == "ELMWOOD VILLAGE CHARTER - HERTEL"|
            school_name == "GENESEE COMMUNITY CHARTER SCHOOL")
-
+nys_wmeans <- nys_acad %>% 
+  group_by(school_name,grade,subject) %>% 
+  summarize(wmeans = weighted.mean(mean_scale_score,n_tested),
+            n_tested = n_tested) %>% na.omit()
 sd <- nys_wmeans %>% 
-  group_by(item_desc) %>% 
-  summarize(sd_score = sd(wmeans)) # is this how to get the sd of NY scale scores by grade and subject?
-nys_memb <- merge(nys_memb,sd,by="item_desc") # add column of sd value for each grade and subject
-nys_memb <- merge(nys_memb,nys_means, by="item_desc") # add column of state means by grade and subject
+  group_by(grade, subject) %>% 
+  summarize(sd = sd(wmeans)) # is this how to get the sd of NY scale scores by grade and subject?
+nys_memb <- merge(nys_memb,sd,by=c("grade","subject")) # add column of sd value for each grade and subject
+nys_memb <- merge(nys_memb,nys_means[,-c(1:2,5)], by=c("grade","subject")) # add column of state means by grade and subject
 str(nys_memb)
 
 nys_memb<- nys_memb %>% 
-  mutate(nys_mean = as.numeric(mean_scale_score),
-         z_score = (wmeans - nys_mean)/sd_score,
-         n_tested = n_tested.x) %>% 
-  select(school_name.x,subject,item_desc,n_tested,wmeans,nys_mean,sd_score,z_score) %>%
-  arrange(school_name.x,item_desc) 
+  mutate(school_mean = as.numeric(mean_scale_score.x),
+         nys_mean = as.numeric(mean_scale_score.y),
+         z_score = (school_mean - nys_mean)/sd) %>% 
+  select(school_name,grade,subject,n_tested,school_mean,nys_mean,sd,z_score) %>%
+  arrange(school_name,grade,subject) 
 
-write.csv(nys_memb,file = file.path("nys_acad_memb.csv"),row.names = FALSE)
+library(plyr)
+a <- ddply(nys_memb, .(school_name, subject), summarize, 
+      n_students = sum(n_tested), # column for and for the total students tested across all grades
+      min_grade = min(grade), # make columns for the grade range
+      max_grade = max(grade),
+      z_wgt = weighted.mean(z_score,n_tested))  
+c <- ddply(nys_memb, .(school_name),summarize,
+           n_students = sum(n_tested),
+           min_grade = min(grade),
+           max_grade = max(grade),
+           z_wgt = weighted.mean(z_score, n_tested))
+c$subject <- "both math and ELA"
+nys_memb <- rbind(a,c) %>% arrange(school_name, subject)
 
-#----- DC schools
-dc <- read_excel("raw_data/2019 DC School Report Card Metric Scores Public Data 12.20.19.xlsx", 
-                 sheet = "School STAR Metric Scores")
-# data from https://drive.google.com/open?id=1y0hjFmXj6b2_mBAlyOwA3hLyLVUltrSq
-str(dc)
-names(dc) <- tolower(names(dc))
-dc <- dc %>% 
-  mutate(domain = as.factor(domain),
-         school = as.factor(`school name`),
-         lea = as.factor(`lea name`),
-         subgroup = as.factor(`student group`),
-         metric = as.factor(metric))
-levels(dc$subgroup)
-dc %>% 
-  filter(subgroup == "All Students",
-         domain == "Academic Achievement"|
-           domain == "Academic Growth"|
-           domain == "Educational Progress") %>% View()
-
-dc <- read_excel("raw_data/DC_Detailed 2018-19 PARCC And MSAA Performance 2.19.20.Xlsx", sheet = "School Performance")
-str(dc)
-names(dc) <- tolower(names(dc))
-levels(as.factor(dc$`lea name`))
-dc <- dc %>% 
-  mutate(n_tested = as.numeric(`total number valid test takers`),
-         school = as.factor(`school name`),
-         lea = as.factor(`lea name`))
+write.csv(nys_memb,file = file.path("nys_acad_memb2.csv"),row.names = FALSE)
