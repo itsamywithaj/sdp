@@ -89,3 +89,123 @@ c$subject <- "both math and ELA"
 nys_memb <- rbind(a,c) %>% arrange(school_name, subject)
 
 write.csv(nys_memb,file = file.path("nys_acad_memb2.csv"),row.names = FALSE)
+
+# ---- NYS demographics and subgroups diversity -----
+nys_enrl <- read_excel("raw_data/NYS_enrollment_2019/Demographic Factors.xlsx")
+names(nys_enrl) <- tolower(names(nys_enrl))
+str(nys_enrl)
+nys_enrl <- nys_enrl %>% 
+  filter(year == "2019")%>% 
+  mutate(school_name = entity_name)
+memb_demog <- nys_enrl %>% 
+  filter(school_name == "ACADEMY OF THE CITY CHARTER SCHOOL"|
+           str_detect(school_name,"BROOKLYN PROSPECT CHARTER SCHOOL")==TRUE|
+           school_name == "CENTRAL QUEENS ACADEMY CHARTER SCHOOL"|
+           school_name == "COMMUNITY ROOTS CHARTER SCHOOL"|
+           school_name == "COMPASS CHARTER SCHOOL"|
+           str_detect(school_name,"HEBREW LANGUAGE")==TRUE|
+           school_name == "HELLENIC CLASSICAL CHARTER SCHOOL"|
+           school_name == "INTERNATIONAL CHARTER SCHOOL OF NEW YORK (THE)"|
+           school_name == "NEW YORK FRENCH-AMERICAN CHARTER SCHOOL"|
+           school_name == "BROOKLYN URBAN GARDEN CHARTER SCHOOL"|
+           str_detect(school_name, "SUCCESS ACADEMY CHARTER SCHOOL",) == TRUE|
+           school_name == "ELMWOOD VILLAGE CHARTER SCHOOL"|
+           school_name == "ELMWOOD VILLAGE CHARTER - HERTEL"|
+           school_name == "GENESEE COMMUNITY CHARTER SCHOOL")
+
+# boces = board of cooperative educational services
+boces <- read_excel("raw_data/NYS_enrollment_2019/BOCES and N_RC.xlsx")
+memb_counties <- boces %>% 
+  mutate(school_name = SCHOOL_NAME,
+         county = COUNTY_NAME) %>% 
+  filter(county=="ERIE"|
+           county=="MONROE"|
+           county=="NEW YORK"|
+           county=="BRONX"|
+           county=="KINGS"|
+           county=="QUEENS") %>% 
+  select(school_name, county)
+
+memb_demog <- merge(memb_demog,memb_counties,by="school_name")
+memb_demog <- memb_demog %>% 
+  mutate(total = num_am_ind + num_asian + num_black + num_hisp + num_white + num_multi,
+         n_amind = num_am_ind,
+         n_asian = num_asian,
+         n_black = num_black,
+         n_hisp = num_hisp,
+         n_white = num_white,
+         n_multi = num_multi,
+         n_ed = num_ecdis,
+         n_ell = num_ell,
+         n_swd = num_swd) %>% 
+  select(school_name, county, total, n_amind, n_asian, n_black, n_hisp, n_white, n_multi, n_ed, n_ell, n_swd)
+write.csv(memb_demog, file = file.path('nys_membdemog.csv'), row.names = FALSE)
+
+nys_enrl_filt <- merge(nys_enrl,memb_counties,by="school_name")
+nys_enrl_filt <- nys_enrl_filt %>% # a row for every school in the same county as a member school
+  mutate(total = num_am_ind + num_asian + num_black + num_hisp + num_white + num_multi,
+         n_amind = num_am_ind,
+         n_asian = num_asian,
+         n_black = num_black,
+         n_hisp = num_hisp,
+         n_white = num_white,
+         n_multi = num_multi,
+         n_ed = num_ecdis,
+         n_ell = num_ell,
+         n_swd = num_swd) %>% 
+  select(school_name, county, total, n_amind, n_asian, n_black, n_hisp, n_white, n_multi, n_ed, n_ell, n_swd)
+write.csv(nys_enrl_filt, file = file.path('nys_demog.csv'), row.names = FALSE) 
+
+nys_entities <- nys_enrl %>% 
+  filter(entity_name == "NYC Public Schools"|
+           entity_name == "Large Cities"|
+           entity_name == "High Need/Resource Urban-Suburban Districts"|
+           entity_name == "Average Need Districts"|
+           entity_name == "Low Need Districts"|
+           entity_name == "Charter Schools"|
+           entity_name == "BRONX County"|
+           entity_name == "ERIE County"|
+           entity_name == "KINGS County"|
+           entity_name == "MONROE County"|
+           entity_name == "NEW YORK County"|
+           entity_name == "QUEENS County") %>% 
+  arrange(entity_cd) %>% 
+  mutate(total = num_am_ind + num_asian + num_black + num_hisp + num_white + num_multi) %>% 
+  select(entity_name, total, num_am_ind, num_asian,num_black,num_hisp, num_white, num_multi,
+         num_ecdis, num_ell, num_swd) %>% 
+  mutate(count_poc = num_am_ind + num_asian + num_black + num_hisp + num_multi,
+         count_white = num_white)
+nys_entities <- nys_entities[-9,] #remove an individual building, and keep NYC PS as a district
+nys_entities$county <- c("NA","NA","NA","NA","NA","NA",
+                         "ERIE","MONROE", "NEW YORK","BRONX","KINGS","QUEENS")
+nys_entities <- nys_entities %>% 
+  select(entity_name, county, total, count_poc, count_white, num_am_ind, num_asian,num_black,num_hisp, num_white, num_multi,
+         num_ecdis, num_ell, num_swd)
+write.csv(nys_entities, file = file.path('nys_entities.csv'),row.names = FALSE)
+
+dissim <- memb_demog %>% 
+  mutate(n_poc = n_amind + n_black + n_asian + n_hisp + n_multi) %>% 
+  select(school_name,county,total, n_poc, n_white)
+dissim <- merge(dissim, nys_entities, by="county")
+dissim %>% 
+  mutate(dis_county = abs((n_poc/count_poc)-(n_white/count_white)),
+         dis_largecities = abs((n_poc/as.numeric(nys_entities[2,4]))-
+                                 (n_white/as.numeric(nys_entities[2,5]))),
+         dis_avgneed = abs((n_poc/as.numeric(nys_entities[4,4]))-
+                             (n_white/as.numeric(nys_entities[4,5]))),
+         dis_lowneed = abs((n_poc/as.numeric(nys_entities[5,4]))-
+                              (n_white/as.numeric(nys_entities[5,5]))),
+         dis_example = abs((n_poc/1000)-(n_white/2000))) %>% View()
+
+install.packages('segregation')
+library(segregation)
+# which schools are most segregated?
+load("~/Downloads/schools00.rda")
+localseg = mutual_local(schools00, "race", "school",
+                         weight = "n", wide = TRUE)
+str(schools00)
+View(localseg)
+schools00 %>% 
+  filter(school == "B136_2"|
+           school == "A67_2"|
+           school == "C7_2") %>% View()
