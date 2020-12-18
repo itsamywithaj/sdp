@@ -1,4 +1,4 @@
-"school_name","county","total","n_amind","n_asian","n_black","n_hisp","n_white","n_multi","n_ed","n_ell","n_swd"
+"entity_name","county","total","n_amind","n_asian","n_black","n_hisp","n_white","n_multi","n_ed","n_ell","n_swd"
 "ACADEMY OF THE CITY CHARTER SCHOOL","QUEENS",411,1,92,33,218,67,0,291,40,51
 "BROOKLYN PROSPECT CHARTER SCHOOL","KINGS",773,1,66,77,271,322,36,340,17,160
 "BROOKLYN URBAN GARDEN CHARTER SCHOOL","KINGS",286,0,9,103,116,42,16,187,11,76
