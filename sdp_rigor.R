@@ -13,7 +13,6 @@ setwd("/Users/amyjiravisitcul/Downloads/States/")
 
 # ---- NYS demographics and subgroups diversity -----
 # zip file of data imported from https://data.nysed.gov/files/enrollment/18-19/enrollment_2019.zip
-# mdb pile was a pain in the ass -- thx 4 nothing, Gates
 # open in Access and save as Excel
 nys_enrl <- read_excel("raw_data/NYS_enrollment_2019/Demographic Factors.xlsx")
 names(nys_enrl) <- tolower(names(nys_enrl))
@@ -237,6 +236,7 @@ district21 <- nyc_pkg %>%
   filter(dist == 21|
            school %in% nyc_enroll_memb[which(nyc_enroll_memb$dist == 21),]$school) %>% 
   mutual_local("race","school",weight = "count", wide = TRUE)
+
 memb_dist21 <- district21 %>% 
   filter(school %in% nyc_enroll_memb[which(nyc_enroll_memb$dist == 21),]$school) %>% 
   mutate(dist = 21)
@@ -361,7 +361,8 @@ names(mon_locseg) <- c("school","ls_county","p_county")
 nys_memb_locseg <- rcsd_locseg %>% 
   filter(school == "GENESEE COMMUNITY CHARTER SCHOOL")
 a <- mon_locseg %>% 
-  filter(school == "GENESEE COMMUNITY CHARTER SCHOOL")
+  filter(school == "GENESEE COMMUNITY CHARTER SCHOOL") 
+
 nys_memb_locseg <- merge(nys_memb_locseg,a,by="school")
 
 # How segregated is each district compared to the whole county?
@@ -451,7 +452,31 @@ c <- merge(a,b,by="school")
 nys_memb_locseg <- rbind(nys_memb_locseg,c)
 write.csv(nys_memb_locseg,file = file.path('nys_memb_locseg.csv'), row.names = FALSE)
 
-# ---- trying to get NYC 2019 data from NYSED dataset ----
+erie_distlocseg <- nys_enrl %>% filter(str_detect(entity_cd, "^14"),
+                         str_detect(entity_cd, ".*0000")==TRUE)
+erie_distlocseg <- erie_distlocseg %>% 
+  mutate(total = num_am_ind + num_black + num_hisp +
+                            num_asian + num_white + num_multi,
+                          n_amind = num_am_ind,
+                          n_asian = num_asian,
+                          n_black = num_black,
+                          n_hisp = num_hisp,
+                          n_white = num_white,
+                          n_mult = num_multi,
+                          n_ell = num_ell,
+                          not_ell = total - n_ell,
+                          n_swd = num_swd,
+                          not_swd = total - n_swd,
+                          n_ed = num_ecdis,
+                          not_ed = total - n_ed) %>% 
+  select(entity_cd, entity_name, year, total, n_amind, n_asian, n_black, n_hisp, n_white, n_mult,
+         n_ell, not_ell, n_swd, not_swd, n_ed, not_ed)
+erie_distlocseg <- erie_distlocseg %>% 
+  gather(key = "race", value = "n",n_amind:n_mult,factor_key = TRUE) %>% 
+  select(entity_cd, entity_name, year, total, race, n)
+erie_distlocseg = mutual_local(erie_distlocseg,"race","entity_name", weight = "n", wide = TRUE)
+View(erie_distlocseg)
+# ---- NYC 2018-2019 data from NYSED dataset ----
 nyc_enroll <- nys_enrl %>% 
   filter(year == "2019",
          str_detect(entity_cd,"^3"),
@@ -480,6 +505,34 @@ nyc_enroll <- nys_enrl %>%
            dist > 12 & dist < 18|
            dist > 20 & dist < 33 & dist != 23 &
            dist != 25 & dist != 26 & dist != 28 & dist != 31)
+
+nyc_distlocseg <- nys_enrl %>% 
+  filter(year == "2019",
+         str_detect(entity_cd,"^3"),
+         str_detect(entity_cd,"........0000")==TRUE) %>% # District totals
+  mutate(split = entity_cd) %>% 
+  separate(split, c("other", "district","drop"), # entity_cd's digits 3 and 4 are the district
+           sep = c(2,4)) %>% 
+  mutate(total = num_am_ind + num_black + num_hisp +
+           num_asian + num_white + num_multi,
+         n_amind = num_am_ind,
+         n_asian = num_asian,
+         n_black = num_black,
+         n_hisp = num_hisp,
+         n_white = num_white,
+         n_mult = num_multi,
+         n_ell = num_ell,
+         not_ell = total - n_ell,
+         n_swd = num_swd,
+         not_swd = total - n_swd,
+         n_ed = num_ecdis,
+         not_ed = total - n_ed,
+         dist = as.numeric(district)) %>% 
+  select(entity_cd, entity_name, dist, year, total, n_amind, n_asian, n_black, n_hisp, n_white, n_mult)
+nyc_distlocseg <- nyc_distlocseg %>% 
+  gather(key = "race", value = "n", n_amind:n_mult, factor_key=TRUE)
+nyc_distlocseg = mutual_local(nyc_distlocseg,"race","entity_name", weight = "n", wide = TRUE)
+
 # ---- multi-group seg for each NYC district ----
 nyc_pkg <- nyc_enroll %>% 
   gather(key = "race", value = "n", n_amind:n_mult, factor_key = TRUE) %>% 
@@ -730,6 +783,32 @@ ny_memb_locseg <- merge(ny_memb_locseg,nyc_groups, by="school")
 mutual_total(nyc_pkg, "race","school", weight = "n") # M = 0.41, H = 0.30
 mutual_total(nyc_pkg, "race","dist", weight = "n") # M = 0.21, H = 0.15
 mutual_total(nyc_pkg, "race","school", within = "dist",weight = "n") # M = 0.21, H = 0.15
+
+example_data <- data.frame(dist = c("District 1","District 2","District 3"),
+                           black = c(1000,0,0),
+                           white = c(0,1000,750),
+                           asian = c(0,0,250))
+example_data <- example_data %>% 
+  gather(race, n, black:asian, factor_key = TRUE) 
+mutual_total(example_data, "race","dist",weight = "n") # M = 0.70, H = 0.79
+
+example2 <- data.frame(dist = c("District 1","District 2","District 3"),
+                       black = c(750,250,0),
+                       white = c(250,750,750),
+                       asian = c(0,0,250))
+example2 <- example2 %>% 
+  gather(race, n, black:asian, factor_key = TRUE)
+mutual_total(example2, "race","dist",weight = "n") # M = 0.33, H = 0.37
+mutual_local(example2,"race","dist",weight = "n", wide = TRUE)
+
+example3 <- data.frame(dist = c("District 1","District 2","District 3"),
+                       black = c(750,750,840),
+                       white = c(150,150,60),
+                       asian = c(50,50,50))
+example3 <- example3 %>% 
+  gather(race, n, black:asian, factor_key = TRUE)
+mutual_total(example3,"race","dist",weight = "n")
+
 # "NYC" as a county, Mutual Info Index gives that this county has an evenness of 0.21 across districts
 mutual_dist2 <- nyc_pkg %>% 
   filter(dist == 2) %>% 
@@ -952,8 +1031,15 @@ nys_acad <- nys %>%
   separate(item_desc, c("drop","grade","subject"),sep=" ") %>% 
   filter(subgroup_name == "All Students", # aggregated student performance
          is.na(county_code)==FALSE, # within a county
-         str_detect(school_name,"DISTRICT")==FALSE, # remove whole-county rows
-         str_detect(school_name,"COUNTY")==FALSE) %>% # remove whole-district rows
+         str_detect(bedscode, ".......0000")==FALSE, # take out the rows for district and county
+         bedscode != 0, # take out the rows for statewide
+         bedscode != 1, # take out the rows for NYC
+         bedscode != 2, # take out the rows for only Buffalo, Yonkers, Rochester, Syracuse
+         bedscode != 3, # take out the rows for urban-suburban high needs
+         bedscode != 4, # take out the rows for rural high needs
+         bedscode != 5, ## take out the rows for average needs
+         bedscode != 6, # take out the rows for low needs
+         bedscode !=7) %>% # remove rows for aggregate charters
   mutate(n_tested = as.numeric(as.character(total_tested)),
          mean_scale_score = as.numeric(as.character(mean_scale_score))) %>% 
   select(school_name, subject, grade, n_tested,mean_scale_score) %>% na.omit()
@@ -1100,4 +1186,92 @@ nys_merged <- rbind(x, nys_merged)
 write.csv(nys_merged,file = file.path('nys_merged.csv'), row.names = FALSE)
 
 # ---- test performance by subgroup ----
+acad_byrace <- nys %>% 
+  separate(item_desc, c("drop","grade","subject"),sep=" ") %>% 
+  filter(subgroup_name == "American Indian or Alaska Native"|
+           subgroup_name == "Asian or Pacific Islander"|
+           subgroup_name == "Black or African American"|
+           subgroup_name == "Hispanic or Latino"|
+           subgroup_name == "Multiracial"|
+           subgroup_name == "White", 
+         str_detect(bedscode, ".......0000")==FALSE, # take out the rows for district and county
+         bedscode != 0, # take out the rows for statewide
+         bedscode != 1, # take out the rows for NYC
+         bedscode != 2, # take out the rows for only Buffalo, Yonkers, Rochester, Syracuse
+         bedscode != 3, # take out the rows for urban-suburban high needs
+         bedscode != 4, # take out the rows for rural high needs
+         bedscode != 5, ## take out the rows for average needs
+         bedscode != 6, # take out the rows for low needs
+         bedscode !=7) %>% # take out the rows for only charters
+  mutate(n_tested = as.numeric(as.character(total_tested)),
+         mean_scale_score = as.numeric(as.character(mean_scale_score))) %>% 
+  select(bedscode,school_name, subgroup_name, subject, grade, n_tested,mean_scale_score) %>% na.omit()
 
+nys_memb <- acad_byrace %>% 
+  filter(school_name == "ACADEMY OF THE CITY CHARTER SCHOOL"|
+           str_detect(school_name,"BROOKLYN PROSPECT CHARTER SCHOOL")==TRUE|
+           school_name == "CENTRAL QUEENS ACADEMY CHARTER SCHOOL"|
+           school_name == "COMMUNITY ROOTS CHARTER SCHOOL"|
+           school_name == "COMPASS CHARTER SCHOOL"|
+           str_detect(school_name,"HEBREW LANGUAGE")==TRUE|
+           school_name == "HELLENIC CLASSICAL CHARTER SCHOOL"|
+           school_name == "INTERNATIONAL CHARTER SCHOOL OF NEW YORK (THE)"|
+           school_name == "NEW YORK FRENCH-AMERICAN CHARTER SCHOOL"|
+           school_name == "BROOKLYN URBAN GARDEN CHARTER SCHOOL"|
+           str_detect(school_name, "SUCCESS ACADEMY CHARTER SCHOOL",) == TRUE|
+           school_name == "ELMWOOD VILLAGE CHARTER SCHOOL"|
+           school_name == "ELMWOOD VILLAGE CHARTER - HERTEL"|
+           school_name == "GENESEE COMMUNITY CHARTER SCHOOL")
+library(tidyverse)
+nys_wmeans <- acad_byrace %>% 
+  group_by(school_name,grade,subject,subgroup_name) %>% 
+  summarize(wmeans = weighted.mean(mean_scale_score,n_tested),
+            n_tested = n_tested) %>% na.omit()
+sd <- nys_wmeans %>% 
+  group_by(grade, subject, subgroup_name) %>% 
+  summarize(sd = sd(wmeans))
+gradesubgroup_means <- nys_wmeans %>% 
+  group_by(grade, subject, subgroup_name) %>% 
+  summarize(nys_mean = mean(wmeans))
+membsub_wmeans <- nys_wmeans %>% 
+  filter(school_name == "ACADEMY OF THE CITY CHARTER SCHOOL"|
+           str_detect(school_name,"BROOKLYN PROSPECT CHARTER SCHOOL")==TRUE|
+           school_name == "CENTRAL QUEENS ACADEMY CHARTER SCHOOL"|
+           school_name == "COMMUNITY ROOTS CHARTER SCHOOL"|
+           school_name == "COMPASS CHARTER SCHOOL"|
+           str_detect(school_name,"HEBREW LANGUAGE")==TRUE|
+           school_name == "HELLENIC CLASSICAL CHARTER SCHOOL"|
+           school_name == "INTERNATIONAL CHARTER SCHOOL OF NEW YORK (THE)"|
+           school_name == "NEW YORK FRENCH-AMERICAN CHARTER SCHOOL"|
+           school_name == "BROOKLYN URBAN GARDEN CHARTER SCHOOL"|
+           str_detect(school_name, "SUCCESS ACADEMY CHARTER SCHOOL",) == TRUE|
+           school_name == "ELMWOOD VILLAGE CHARTER SCHOOL"|
+           school_name == "ELMWOOD VILLAGE CHARTER - HERTEL"|
+           school_name == "GENESEE COMMUNITY CHARTER SCHOOL")
+a <- merge(membsub_wmeans,sd,by=c("grade","subject","subgroup_name")) # add column of sd value for each grade, subject, subgroup
+nys_memb <- merge(a,gradesubgroup_means, by=c("grade","subject","subgroup_name"))# add column of weighted means by grade subject and subgroup
+str(nys_memb)
+
+nys_memb<- nys_memb %>% 
+  mutate(z_score = (wmeans - nys_mean)/sd) %>% # standardized measure of student performance among same grade and race
+  select(school_name,subgroup_name,grade,subject,n_tested,wmeans,nys_mean,sd,z_score) %>%
+  arrange(school_name,grade,subject,subgroup_name) 
+
+library(plyr)
+a <- ddply(nys_memb, .(school_name, subject, subgroup_name), summarize, # summarize by school subject and subgroup
+           n_students = sum(n_tested), # column for total students tested across all grades
+           min_grade = min(grade), # make columns for the grade range
+           max_grade = max(grade),
+           z_wgt = weighted.mean(z_score,n_tested))  # calculate z score based on n_tested of each subject
+c <- ddply(nys_memb, .(school_name, subgroup_name),summarize, # summarize by just the school
+           n_students = sum(n_tested), # column for total students tested across all grades
+           min_grade = min(grade), # make columns for the grade range
+           max_grade = max(grade),
+           z_wgt = weighted.mean(z_score, n_tested)) # calculate z score based on n_tested of both subjects
+c$subject <- "both math and ELA"
+nys_memb2 <- rbind(a,c) %>% arrange(school_name, subject)
+subgroup_ref <- merge(gradesubgroup_means,sd, by=c("grade","subject","subgroup_name"))
+names(sd)
+write.csv(nys_memb, file = file.path('nys_memb_acadbyrace.csv'), row.names = FALSE) # saves with weighted mean score for each group
+write.csv(nys_memb2, file = file.path('nys_memb_acadbyrace2.csv'), row.names = FALSE)
+write.csv(subgroup_ref, file = file.path('nys_subgroupref.csv'),row.names = FALSE)
