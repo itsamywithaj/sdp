@@ -11,7 +11,7 @@ getwd()
 setwd("/Users/amyjiravisitcul/Downloads/DC deep dive/")
 
 
-# ---- import the data ----
+# ---- IMPORT DATA ON ENROLLMENT ----
 # file of 2019-2020 attendance data from https://osse.dc.gov/publication/dc-attendance-report-2019-20-school-year
 dc_enrl <- read_excel("2020 Attendance - Metric Scores.xlsx", 
                       sheet ="School Metric Scores")
@@ -28,7 +28,7 @@ dc_enrl <- dc_enrl %>%
          metric, `metric score`,n_students)
 levels(as.factor(dc_enrl$group))
 
-# ---- DC school-level race demographics -----
+# ---- SCHOOL-LEVEL STUDENT COUNTS BY RACE -----
 dc_race <- dc_enrl %>% 
   mutate(n_suppressed = as.character(n_students), # acknowledge suppressed data
          n_students = as.numeric(n_students)) %>% 
@@ -91,7 +91,7 @@ summary(dc_locseg$ls) # How much does each school represent all of DC?
 names(dc_locseg) <- c("school","ls_dc","p_dc")
 
 write.csv(dc_race, file = file.path('dc_race.csv'),row.names = FALSE)
-# ---- ward-level demographics ----
+# ---- WARD-LEVEL STUDENT COUNTS BY RACE ----
 dc_wards <- read_excel("2019 DC School Report Card Aggregate Public Data_.xlsx", # 2018-2019 school year data 
                        sheet = "Enrollment") # with ward designations
 names(dc_wards) <- tolower(names(dc_wards))
@@ -188,7 +188,7 @@ rm(a,b,c,d,e,f,g,h)
 
 dc_all_locseg <- merge(sch_wards_locseg,dc_locseg,by="school")
 
-# member as a Y/N column w/ racial demographics------
+# DCSC member as a Y/N column w/ racial demographics------
 dc_memb_locseg <- dc_all_locseg %>% 
   filter(school == "District of Columbia International School"|
            str_detect(school,"Capital City PCS")|
@@ -210,7 +210,8 @@ dc_all_locseg <- rbind(dc_memb_locseg,dc_notmembers)
 write.csv(dc_all_locseg,file = file.path('dc_all_locseg.csv'),row.names = FALSE)
 write.csv(dc_memb_locseg, file = file.path('dc_memb_locseg.csv'),row.names = FALSE)
 
-# Ward-level racial segregation ----
+# How racially segregated is DC across wards? ----
+# Across schools? Across schools within wards? ----
 dc_race1 <- dc_race %>% 
   filter(group != "all")
 dc_wards1 <- dc_wards %>% 
@@ -219,37 +220,16 @@ mutual_total(dc_race1, "group","school", weight = "n") # M = 0.39, H = 0.40
 mutual_total(dc_wards1, "group","ward", weight = "n") # M = 0.24, H = 0.24
 mutual_total(dc_wards1, "group","school", within = "ward",weight = "n") # M = 0.16, H = 0.16
 
-example_data <- data.frame(dist = c("District 1","District 2","District 3"),
-                           black = c(1000,0,0),
-                           white = c(0,1000,750),
-                           asian = c(0,0,250))
-example_data <- example_data %>% 
-  gather(race, n, black:asian, factor_key = TRUE) 
-mutual_total(example_data, "race","dist",weight = "n") # M = 0.70, H = 0.79
-
-example2 <- data.frame(dist = c("District 1","District 2","District 3"),
-                       black = c(750,250,0),
-                       white = c(250,750,750),
-                       asian = c(0,0,250))
-example2 <- example2 %>% 
-  gather(race, n, black:asian, factor_key = TRUE)
-mutual_total(example2, "race","dist",weight = "n") # M = 0.33, H = 0.37
-mutual_local(example2,"race","dist",weight = "n", wide = TRUE)
-
-example3 <- data.frame(dist = c("District 1","District 2","District 3"),
-                       black = c(750,750,840),
-                       white = c(150,150,60),
-                       asian = c(50,50,50))
-example3 <- example3 %>% 
-  gather(race, n, black:asian, factor_key = TRUE)
-mutual_total(example3,"race","dist",weight = "n")
-
-# ---- racial segregation scatterplots ----
+# ---- scatterplots based on racial representativeness ----
+dc_all_locseg$member <- as.factor(dc_all_locseg$member)
+levels(dc_all_locseg$member) <- c("Non-Member","Member")
 q <- ggplot(dc_all_locseg,aes(ls_dc,ls_ward))+
-  geom_point(alpha = 0.7, aes(color = factor(member)),position = "jitter")+
+  geom_point(alpha = 0.7, 
+             aes(color = member,shape = member),
+             position = "jitter")+
   scale_color_manual(values = c("#1aacb8","#ee5d3a"),
-                     name = "",
-                     labels = c("Non-member","DCSC Member"))+
+                     name = "")+
+  scale_shape_manual(values=c(20, 2), name ="")+
   theme_minimal()+
   theme(plot.title = element_text(hjust=0.5),
         legend.position = "top",
@@ -306,7 +286,7 @@ p <- ggplot(wards_locseg,aes(ward,ls))+
 p
 ggsave("wards.png",p,width = 10, height = 5)
 
-# ---- At-Risk, EL, SWD -----
+# ---- SCHOOL-LEVEL STUDENT COUNTS BY STATUS OF At-Risk, EL, SWD -----
 dc_subgroups <- dc_enrl %>% 
   mutate(n_suppressed = as.character(n_students),
          n_students = as.numeric(n_students)) %>% 
@@ -351,9 +331,7 @@ dc_subgroups <- dc_subgroups %>%
          p_el = el/all,
          p_swd = swd/all)
 
-
-
-# ward-level data for each subgroup ----
+# ward-level proportions for each non-racial subgroup ----
 ward1 <- dc_subgroups %>% 
   filter(ward == "1") %>% 
   mutate(ward_risk = mean(p_risk),
@@ -483,7 +461,7 @@ notmembers_sub <- dc_subgroups %>%
 dc_subgroups <- rbind(memb_subgroups,notmembers_sub)
 write.csv(dc_subgroups, file = file.path('dc_subgroups.csv'),row.names = FALSE)
 
-# ---- subgroup segregation scatterplots -----
+# ---- subgroup proportions scatterplots and bar graphs -----
 # at-risk
 df <- data.frame(x1 = 0, x2 = .75, y1 = 0, y2=.75)
 risk_plot <- ggplot(dc_subgroups,aes(ward_risk,p_risk))+
